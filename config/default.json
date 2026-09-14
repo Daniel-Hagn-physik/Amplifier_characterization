@@ -1,0 +1,39 @@
+{
+  "instrument": {
+    "resource": "TCPIP0::192.168.1.187::hislip0::INSTR",
+    "timeout_ms": 20000,
+    "rbw_hz": 100000.0,
+    "vbw_hz": 100000.0,
+    "ref_level_dbm": 10.0,
+    "attenuation_db": 20.0,
+    "settle_s": 0.2,
+    "sweep_points": 1183,
+    "generator_state_command": "SOUR:TG:STAT {state}",
+    "generator_level_command": "SOUR:TG:POW {level:.2f} dBm"
+  },
+  "frequency": {
+    "start_hz": 80000000.0,
+    "stop_hz": 120000000.0,
+    "points": 401
+  },
+  "amplitude": {
+    "start_dbm": -30.0,
+    "stop_dbm": 0.0,
+    "points": 31
+  },
+  "output": {
+    "directory": "results",
+    "name": "thru",
+    "date_format": "%Y-%m-%d"
+  },
+  "measurement": {
+    "skip_thru_prompt": false
+  },
+  "simulation": {
+    "gain_db": -0.6,
+    "p_sat_dbm": 40.0,
+    "rolloff_db_per_ghz": 0.0,
+    "points": 711,
+    "noise_floor_dbm": -100.0
+  }
+}
