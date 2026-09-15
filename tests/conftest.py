@@ -89,5 +89,7 @@ def config(tmp_path):
         amplitude=AmplitudeConfig(start_dbm=-20.0, stop_dbm=-10.0, points=2),
         instrument=InstrumentConfig(resource="FAKE::INSTR", settle_s=0.0),
         output=OutputConfig(directory=str(tmp_path / "results"), name="test"),
-        measurement=MeasurementConfig(),
+        # amplifier_gain_db ist seit der Pflichtangabe in jeder gueltigen
+        # Konfiguration gesetzt - sonst schlaegt Config.validate() fehl.
+        measurement=MeasurementConfig(amplifier_gain_db=0.0),
     )

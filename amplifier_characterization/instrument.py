@@ -47,6 +47,10 @@ def probe_tcp(host: str, port: int, timeout_s: float = 2.0) -> bool:
 
 # Die ersten Eintraege sind durch SYST:HELP:HEAD? des FPC1500 bestaetigt,
 # der Rest deckt verwandte Geraete ab.
+#
+# Wichtig fuer den FPC1500: seine Signalquelle heisst durchgaengig "TG"
+# (SOUR:TG:...). Das aus anderen Geraetefamilien gewohnte OUTP:STAT bzw.
+# SOUR:POW kennt er nicht - die stehen hier nur am Ende als Rueckfall.
 GENERATOR_STATE_CANDIDATES = (
     "SOUR:TG:STAT {state}",
     "SOUR:TG {state}",
@@ -55,6 +59,9 @@ GENERATOR_STATE_CANDIDATES = (
     "OUTP:STAT {state}",
 )
 
+# Dieselbe Funktion in mehreren Schreibweisen: manche Geraete verlangen die
+# Einheit, andere lehnen sie ab, und einige nehmen keine Nachkommastellen.
+# Deshalb dieselbe Kommandowurzel mehrfach mit unterschiedlicher Formatierung.
 GENERATOR_LEVEL_CANDIDATES = (
     "SOUR:TG:POW {level:.2f} dBm",
     "SOUR:TG:POW {level:.2f}",
@@ -64,6 +71,10 @@ GENERATOR_LEVEL_CANDIDATES = (
     "SOUR:POW {level:.2f} dBm",
 )
 
+# Clear/Write statt Mittelung oder Max-Hold erzwingen, damit jeder Sweep fuer
+# sich steht und kein Rest des vorherigen Pegels im Trace haengt. Das am
+# Geraet tatsaechlich akzeptierte Kommando ist DISP:TRAC1:MODE WRIT; das
+# naheliegende TRAC1:MODE kennt der FPC1500 nicht - daher die Reihenfolge.
 TRACE_MODE_CANDIDATES = (
     "DISP:TRAC1:MODE WRIT",
     "DISP:TRAC:MODE WRIT",
@@ -119,6 +130,8 @@ class FPC1500:
         self._instrument.timeout = self.timeout_ms
         if "SOCKET" in self.resource.upper():
             # Raw-Socket-Verbindungen brauchen ein explizites Zeilenende.
+            # Beim FPC1500 kommt dieser Zweig nicht zum Tragen: er spricht nur
+            # HiSLIP, wo VISA die Terminierung selbst regelt.
             self._instrument.read_termination = "\n"
             self._instrument.write_termination = "\n"
         return self
@@ -198,6 +211,10 @@ class FPC1500:
 
         Gibt die Vorlage zurueck, die durchgegangen ist - Geraete derselben
         Familie benennen dieselbe Funktion unterschiedlich.
+
+        Das Durchprobieren geht nur, weil ein unbekanntes Kommando beim FPC1500
+        folgenlos in der Fehlerwarteschlange landet, statt eine Exception
+        auszuloesen. Abgelehnte Varianten aendern also nichts am Geraet.
         """
         self._last_rejections = []
         for template in templates:
@@ -250,12 +267,20 @@ class FPC1500:
         send(f"FREQ:STAR {start_hz:.6f} Hz", essential=True)
         send(f"FREQ:STOP {stop_hz:.6f} Hz", essential=True)
         # Daempfung VOR dem Referenzpegel: der zulaessige Pegelbereich haengt
-        # von der eingestellten Eingangsdaempfung ab.
+        # von der eingestellten Eingangsdaempfung ab. Am Geraet nachgemessen
+        # gilt RLEV_max = INP:ATT - 10 dBm. In umgekehrter Reihenfolge wuerde
+        # ein hoher Referenzpegel abgelehnt und das Geraet bliebe still auf
+        # dem alten Wert stehen.
         if config.attenuation_db is None:
             send("INP:ATT:AUTO ON")
         else:
             send(f"INP:ATT {config.attenuation_db:.0f} dB")
         send(f"DISP:TRAC:Y:RLEV {config.ref_level_dbm:.2f} dBm")
+        # Zur Wahl der Aufloesebandbreite: bei 100 kHz zeigt der FPC1500 ueber
+        # den Span einen symmetrischen Bogen von rund 3 dB, der sich mit dem
+        # Span mitdehnt - ein Fehler des Trackings, kein Effekt des Pruef-
+        # lings. Bei 300 kHz sind davon nur noch 0.4 dB uebrig, deshalb ist
+        # das der voreingestellte Wert in den Configs.
         if config.rbw_hz is None:
             send("BAND:AUTO ON")
         else:
@@ -264,6 +289,10 @@ class FPC1500:
             send("BAND:VID:AUTO ON")
         else:
             send(f"BAND:VID {config.vbw_hz:.3f} Hz")
+        # RMS-Detektor: mittelt die Leistung ueber das Pixelintervall, statt
+        # den Spitzenwert zu nehmen. Fuer eine Leistungsmessung ist das der
+        # richtige Detektor, und er macht die Pegel unabhaengiger davon, wie
+        # viele Sweep-Punkte auf den Traeger fallen.
         send("DET RMS")
         # Signalquelle soll der Sweep-Frequenz folgen (Tracking) und nicht auf
         # einer festen CW-Frequenz stehen, falls das Geraet so hinterlassen wurde.
@@ -274,6 +303,9 @@ class FPC1500:
             )
             report("   Trace-Modus nicht setzbar - Voreinstellung wird genutzt")
         send("FORM:DATA ASC")
+        # Freilaufender Sweep ist nicht brauchbar: erst im Single-Sweep-Modus
+        # gehoert der gelesene Trace sicher zum zuletzt gesetzten Pegel.
+        # Deshalb essential - ohne das waeren alle Messwerte fragwuerdig.
         send("INIT:CONT OFF", essential=True)
         report("*OPC?")
         self.query("*OPC?")
@@ -292,7 +324,13 @@ class FPC1500:
             raise InstrumentError(f"Unplausible Anzahl Sweep-Punkte: {self._points}")
 
     def frequency_axis(self) -> np.ndarray:
-        """Frequenzachse des zuletzt konfigurierten Sweeps."""
+        """Frequenzachse des zuletzt konfigurierten Sweeps.
+
+        Das Geraet liefert zum Trace keine Frequenzen mit, nur die Pegelwerte.
+        Die Achse wird deshalb aus Start, Stopp und Punktzahl rekonstruiert -
+        und ist nur gueltig, solange nach ``configure`` niemand den
+        Frequenzbereich am Geraet verstellt hat.
+        """
         if self._points < 2:
             raise InstrumentError("Frequenzachse unbekannt - configure() zuerst aufrufen.")
         return np.linspace(self._start_hz, self._stop_hz, self._points)
@@ -321,6 +359,11 @@ class FPC1500:
 
         SCPI erlaubt ``? MIN`` / ``? MAX`` auf Einstellbefehle. Beantwortet das
         Geraet das nicht, gibt die Methode None zurueck.
+
+        Lieber am Geraet nachfragen als aus dem Datenblatt uebernehmen: der
+        Bereich haengt an Optionen und Firmware. Beim FPC1500 sind es -30
+        bis 0 dBm. None bedeutet nur "nicht abfragbar" - dann faellt diese
+        Pruefung weg, die Pegel werden trotzdem gefahren.
         """
         template = self.generator_level_template or GENERATOR_LEVEL_CANDIDATES[0]
         header = template.split("{")[0].strip()
@@ -350,9 +393,14 @@ class FPC1500:
 
     # -- Messung --------------------------------------------------------
     def sweep(self, settle_s: float = 0.0) -> None:
+        # Die Wartezeit liegt VOR dem Sweep: sie gibt dem Generator und den
+        # Filtern Zeit, dem gerade gesetzten Pegel zu folgen. Nach dem Sweep
+        # zu warten wuerde nichts nuetzen - der Trace waere schon verfaelscht.
         if settle_s > 0:
             self._sleep(settle_s)
         self.write("INIT:IMM")
+        # *OPC? blockiert bis zum Ende des Sweeps. Ohne das wuerde read_trace
+        # einen halb aktualisierten Trace lesen.
         self.wait()
 
     def read_trace(self) -> np.ndarray:
@@ -372,7 +420,13 @@ class FPC1500:
 
 
 def strip_block_header(answer: str) -> str:
-    """Entfernt den SCPI-Blockheader (#<n><laenge>) aus einer Antwort."""
+    """Entfernt den SCPI-Blockheader (#<n><laenge>) aus einer Antwort.
+
+    Lange Antworten wie die Befehlsliste aus SYST:HELP:HEAD? kommen als
+    SCPI-Blockdaten: '#' , eine Ziffer n fuer die Laenge der Laengenangabe,
+    dann n Ziffern Laenge, dann die Nutzdaten. '#0' ist der Sonderfall
+    "Laenge unbekannt" und hat nur die zwei Kopfzeichen.
+    """
     if not answer.startswith("#"):
         return answer
     digits = answer[1:2]
@@ -471,6 +525,9 @@ class SimulatedFPC1500:
             return np.full_like(axis, self.noise_floor_dbm)
         gain = self.gain_db - self.rolloff_db_per_ghz * (axis / 1e9)
         linear_out = self._level_dbm + gain
-        # weiche Saettigung Richtung p_sat_dbm
+        # weiche Saettigung Richtung p_sat_dbm: logaddexp biegt die Gerade
+        # stetig in die Saettigung um, statt sie hart abzuschneiden. So hat
+        # der Trockenlauf einen echten Kompressionsbereich, an dem sich die
+        # Auswertung (P1dB-Suche) ueberhaupt erst zeigen kann.
         compressed = self.p_sat_dbm - np.logaddexp(0.0, self.p_sat_dbm - linear_out)
         return np.maximum(compressed, self.noise_floor_dbm)

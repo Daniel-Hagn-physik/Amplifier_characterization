@@ -1,6 +1,6 @@
 [run]
 branch = True
-source = amplifier_characterization, run_s12
+source = amplifier_characterization, run_s12, run_thru, analyze
 
 [report]
 show_missing = True

@@ -95,3 +95,61 @@ def test_prompt_skips_gui_when_disabled():
         printer=lines.append,
     )
     assert dialog.TITLE in lines
+
+
+# -- Dateiauswahl -------------------------------------------------------
+def install_fake_filedialog(monkeypatch, answer="C:/daten/messung.csv", fail=False):
+    tkinter = types.ModuleType("tkinter")
+    filedialog = types.ModuleType("tkinter.filedialog")
+    tkinter.Tk = lambda: FakeRoot(fail=fail)
+    filedialog.askopenfilename = lambda **_kwargs: answer
+    tkinter.filedialog = filedialog
+    monkeypatch.setitem(sys.modules, "tkinter", tkinter)
+    monkeypatch.setitem(sys.modules, "tkinter.filedialog", filedialog)
+
+
+def test_tk_open_csv_returns_selection(monkeypatch):
+    install_fake_filedialog(monkeypatch)
+    assert dialog._tk_open_csv(".", "Titel") == "C:/daten/messung.csv"
+
+
+def test_tk_open_csv_returns_empty_on_cancel(monkeypatch):
+    install_fake_filedialog(monkeypatch, answer="")
+    assert dialog._tk_open_csv(".", "Titel") == ""
+
+
+def test_tk_open_csv_without_tkinter(monkeypatch):
+    monkeypatch.setitem(sys.modules, "tkinter", None)
+    assert dialog._tk_open_csv(".", "Titel") is None
+
+
+def test_tk_open_csv_without_display(monkeypatch):
+    install_fake_filedialog(monkeypatch, fail=True)
+    assert dialog._tk_open_csv(".", "Titel") is None
+
+
+def test_ask_for_csv_uses_the_dialog():
+    assert dialog.ask_for_csv(chooser=lambda _d, _t: "/pfad/a.csv") == "/pfad/a.csv"
+
+
+def test_ask_for_csv_cancelled_dialog_returns_none():
+    assert dialog.ask_for_csv(chooser=lambda _d, _t: "") is None
+
+
+def test_ask_for_csv_falls_back_to_console():
+    lines = []
+    result = dialog.ask_for_csv(
+        chooser=lambda _d, _t: None,
+        input_func=lambda _p: '  "/pfad/b.csv" ',
+        printer=lines.append,
+    )
+    assert result == "/pfad/b.csv"
+    assert lines
+
+
+def test_ask_for_csv_console_cancel():
+    assert dialog.ask_for_csv(
+        chooser=lambda _d, _t: None,
+        input_func=lambda _p: "",
+        printer=lambda _l: None,
+    ) is None

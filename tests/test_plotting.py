@@ -65,5 +65,55 @@ def test_plot_all_writes_three_files(tmp_path, points):
         "m_power_transfer.png",
         "m_frequency_response.png",
         "m_gain_map.png",
+        "m_power_map.png",
     ]
     assert all(path.exists() for path in paths)
+
+
+def test_gain_map_title_marks_cable_correction(tmp_path):
+    from amplifier_characterization.measurement import apply_reference
+
+    thru = make_points([1e6, 2e6], [-30.0, -20.0], gain=-0.6)
+    dut = make_points([1e6, 2e6], [-30.0, -20.0], gain=19.4)
+    corrected = apply_reference(dut, thru)
+    assert plotting.plot_gain_map(corrected, tmp_path / "corr.png").exists()
+    assert plotting.plot_gain_map(dut, tmp_path / "raw.png").exists()
+
+
+# -- Auswertungsplots ---------------------------------------------------
+def _analysis(compressing=True):
+    import numpy as np
+
+    from amplifier_characterization.analysis import analyze
+    from tests.test_analysis import make_amplifier
+
+    levels = np.arange(-30.0, 0.1, 2.0) if compressing else np.arange(-30.0, -19.9, 2.0)
+    return (
+        analyze(make_amplifier(levels, [80e6, 100e6], p_sat=5.0 if compressing else 40.0)),
+        make_amplifier(levels, [80e6, 100e6], p_sat=5.0 if compressing else 40.0),
+    )
+
+
+def test_analysis_plots_with_compression(tmp_path):
+    analysis, points = _analysis(True)
+    paths = plotting.plot_analysis(analysis, points, tmp_path / "mit")
+    assert [p.name for p in paths] == [
+        "analysis_transfer.png",
+        "analysis_compression.png",
+        "analysis_frequency.png",
+        "analysis_gain_map.png",
+        "analysis_power_map.png",
+    ]
+    assert all(path.stat().st_size > 0 for path in paths)
+
+
+def test_analysis_plots_without_compression(tmp_path):
+    analysis, points = _analysis(False)
+    assert analysis.p1db_in is None
+    paths = plotting.plot_analysis(analysis, points, tmp_path / "ohne")
+    assert all(path.stat().st_size > 0 for path in paths)
+
+
+def test_plot_power_map(tmp_path, points):
+    path = plotting.plot_power_map(points, tmp_path / "power.png")
+    assert path.stat().st_size > 0

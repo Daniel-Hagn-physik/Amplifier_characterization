@@ -1,35 +1,72 @@
 {
+  "_ANLEITUNG": "Schluessel mit fuehrendem _ sind Kommentare und werden ignoriert. ===> markiert die Werte, die DU eintragen musst. Alles ohne Markierung sind Geraeteeigenschaften und bleiben stehen.",
+
+  "frequency": {
+    "_A_EINTRAGEN": "===> Welchen Frequenzbereich willst du messen?",
+    "start_hz": 80000000.0,
+    "stop_hz": 120000000.0,
+    "points": 401
+  },
+
+  "amplitude": {
+    "_B_EINTRAGEN": "===> Welchen Eingangspegelbereich? Die Signalquelle des FPC1500 kann nur -30 bis 0 dBm, mehr geht nicht.",
+    "start_dbm": -30.0,
+    "stop_dbm": 0.0,
+    "points": 31
+  },
+
   "instrument": {
+    "_fest_0": "Referenzpegel und Eichleitung werden beim Start automatisch aus amplifier_gain_db und external_pad_db berechnet (measurement.auto_level). Die Werte hier sind nur ein Platzhalter und werden ueberschrieben.",
+    "ref_level_dbm": 20.0,
+    "attenuation_db": 30.0,
+
+    "_fest_1": "Adresse des Geraets. Aendert sich nur, wenn der FPC1500 eine neue IP bekommt.",
     "resource": "TCPIP0::192.168.1.187::hislip0::INSTR",
     "timeout_ms": 20000,
-    "rbw_hz": 100000.0,
-    "vbw_hz": 100000.0,
-    "ref_level_dbm": 10.0,
-    "attenuation_db": 20.0,
+
+    "_fest_2": "Bandbreiten. Nicht unter 300 kHz gehen: bei 100 kHz zeigt der FPC1500 einen Bogen von 3 dB ueber den Span, der nicht vom Messobjekt kommt.",
+    "rbw_hz": 300000.0,
+    "vbw_hz": 300000.0,
+
+    "_fest_3": "Eigenschaften des FPC1500, gemessen. Nicht anfassen. sweep_points null -> aus einem Testsweep bestimmen.",
     "settle_s": 0.2,
     "sweep_points": 1183,
     "generator_state_command": "SOUR:TG:STAT {state}",
     "generator_level_command": "SOUR:TG:POW {level:.2f} dBm"
   },
-  "frequency": {
-    "start_hz": 80000000.0,
-    "stop_hz": 120000000.0,
-    "points": 401
-  },
-  "amplitude": {
-    "start_dbm": -30.0,
-    "stop_dbm": 0.0,
-    "points": 31
-  },
-  "output": {
-    "directory": "results",
-    "name": "thru",
-    "date_format": "%Y-%m-%d"
-  },
+
   "measurement": {
+    "_C_EINTRAGEN": "===> Nenndaempfung des externen Abschwaechers zwischen Verstaerkerausgang und Analyzer, oder null wenn keiner verwendet wird. Die Messwerte beeinflusst der Wert nicht - die Referenz misst die Daempfung selbst. Er geht in den Hinweisdialog und in die automatische Pegeleinstellung ein. Der Abschwaecher muss auch bei der THRU-Kalibrierung schon im Pfad stecken.",
+    "external_pad_db": 20,
+
+    "_D_EINTRAGEN": "===> PFLICHT: Verstaerkung laut Datenblatt in dB, grob reicht (+-3 dB egal). NICHT die Ausgangsleistung - 5 W sind die Leistung, die Verstaerkung ist eine andere Zahl. Daraus berechnet das Skript Referenzpegel und Eichleitung des Analyzers. Der Wert muss VOR der THRU-Kalibrierung feststehen und fuer THRU und Messung derselbe sein, sonst gilt die Referenz nicht. Fehlt er, bricht das Skript mit einer Meldung ab.",
+    "amplifier_gain_db": 36.0,
+    "auto_level": true,
+
+    "_fest_4": "Sicherheitsgrenze am Analyzer-Eingang. Zerstoerschwelle des FPC1500 ist +33 dBm, daher 30.",
+    "max_input_dbm": 30.0,
+
+    "_fest_5": "Geforderter Abstand zum gemessenen Rauschen. Pegelstufen, die weniger darueber liegen, werden verworfen.",
+    "noise_margin_db": 15.0,
+
+    "_fest_6": "Vor der Messung wird die Verstaerkung von unten her abgetastet, um die sichere Obergrenze zu bestimmen.",
+    "gain_probe": true,
+    "gain_probe_step_db": 3.0,
+    "gain_probe_points": 3,
+
+    "auto_limit_levels": true,
     "skip_thru_prompt": false
   },
+
+  "output": {
+    "_E_EINTRAGEN": "===> Name der Messung. Das Datum kommt automatisch davor, also results/2026-09-15_amp1/. Fuer jeden Verstaerker einen eigenen Namen, sonst landen die Ergebnisse durcheinander.",
+    "name": "amp5w",
+    "directory": "results",
+    "date_format": "%Y-%m-%d"
+  },
+
   "simulation": {
+    "_fest_7": "Nur fuer --dry-run: was das simulierte Geraet vorgaukelt. Fuer die echte Messung ohne Bedeutung.",
     "gain_db": -0.6,
     "p_sat_dbm": 40.0,
     "rolloff_db_per_ghz": 0.0,
